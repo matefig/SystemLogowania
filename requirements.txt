@@ -1,0 +1,8 @@
+fastapi             # Główny framework webowy
+uvicorn             # Serwer do uruchomienia FastAPI
+sqlalchemy          # ORM do obsługi bazy danych
+passlib[argon2]     # Biblioteka do haszowania haseł (obsługuje Argon2)
+pyotp               # Biblioteka do obsługi 2FA (TOTP)
+httpx               # Do asynchronicznych zapytań HTTP (np. sprawdzanie popularnych haseł w API Pwned Passwords)
+python-multipart    # Do obsługi formularzy logowania OAuth2
+pydantic[email]     # Do walidacji adresów e-mail

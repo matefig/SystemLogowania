@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bezpieczny System Logowania</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .container { background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
+        .form-group { margin-bottom: 15px; text-align: left; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 14px; }
+        input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { width: 100%; padding: 10px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-top: 10px; }
+        button:hover { background-color: #0056b3; }
+        .toggle-btn { background-color: transparent; color: #007bff; margin-top: 15px; font-size: 14px; padding: 0; }
+        .toggle-btn:hover { background-color: transparent; text-decoration: underline; }
+        #message { margin-top: 20px; padding: 10px; border-radius: 4px; display: none; font-size: 14px; }
+        .error { background-color: #ffe6e6; color: #d8000c; border: 1px solid #d8000c; }
+        .success { background-color: #dff2bf; color: #4f8a10; border: 1px solid #4f8a10; }
+        .hidden { display: none; }
+        .strength-meter { height: 5px; background-color: #eee; margin-top: 5px; border-radius: 3px; overflow: hidden; transition: all 0.3s; }
+        .strength-meter-fill { height: 100%; width: 0; transition: width 0.3s, background-color 0.3s; }
+        .entropy-text { font-size: 12px; color: #666; margin-top: 5px; text-align: right; display: block; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 id="form-title">Logowanie</h2>
+
+    <!-- Formularz logowania/rejestracji -->
+    <form id="auth-form">
+        <div class="form-group">
+            <label for="email">Adres E-mail</label>
+            <input type="email" id="email" required placeholder="jan@kowalski.pl">
+        </div>
+
+        <div class="form-group">
+            <label for="password">Hasło</label>
+            <input type="password" id="password" required placeholder="Twoje tajne hasło">
+
+            <!-- Dodany kontener "entropy-container" z klasą "hidden" -->
+            <div id="entropy-container" class="hidden">
+                <div class="strength-meter" id="strength-meter">
+                    <div class="strength-meter-fill" id="meter-fill"></div>
+                </div>
+                <span class="entropy-text" id="entropy-text">Entropia: 0 bitów</span>
+            </div>
+        </div>
+
+        <!-- Pole 2FA ukryte domyślnie, widoczne tylko przy logowaniu -->
+        <div class="form-group" id="totp-group">
+            <label for="totp">Kod 2FA (Opcjonalnie, jeśli włączone)</label>
+            <input type="text" id="totp" placeholder="123456">
+        </div>
+
+        <button type="submit" id="submit-btn">Zaloguj się</button>
+    </form>
+
+    <button class="toggle-btn" id="toggle-form-btn">Nie masz konta? Zarejestruj się</button>
+
+    <!-- Miejsce na komunikaty dla użytkownika -->
+    <div id="message"></div>
+</div>
+
+<script>
+    const entropyContainer = document.getElementById('entropy-container');
+    let isLoginMode = true;
+
+    const formTitle = document.getElementById('form-title');
+    const submitBtn = document.getElementById('submit-btn');
+    const toggleBtn = document.getElementById('toggle-form-btn');
+    const totpGroup = document.getElementById('totp-group');
+    const authForm = document.getElementById('auth-form');
+    const messageDiv = document.getElementById('message');
+
+    // Przełączanie między logowaniem a rejestracją
+    toggleBtn.addEventListener('click', () => {
+        isLoginMode = !isLoginMode;
+        if (isLoginMode) {
+            formTitle.innerText = 'Logowanie';
+            submitBtn.innerText = 'Zaloguj się';
+            toggleBtn.innerText = 'Nie masz konta? Zarejestruj się';
+
+            // TRYB LOGOWANIA: Pokaż pole 2FA, UKRYJ wskaźnik siły hasła
+            totpGroup.classList.remove('hidden');
+            entropyContainer.classList.add('hidden');
+        } else {
+            formTitle.innerText = 'Rejestracja';
+            submitBtn.innerText = 'Utwórz konto';
+            toggleBtn.innerText = 'Masz już konto? Zaloguj się';
+
+            // TRYB REJESTRACJI: Ukryj pole 2FA, POKAŻ wskaźnik siły hasła
+            totpGroup.classList.add('hidden');
+            entropyContainer.classList.remove('hidden');
+
+            // Wymuś odświeżenie paska, gdyby użytkownik wpisał coś wcześniej
+            passwordInput.dispatchEvent(new Event('input'));
+        }
+        showMessage('', ''); // Wyczyść błędy
+    });
+
+    function showMessage(text, type) {
+        if (!text) {
+            messageDiv.style.display = 'none';
+            return;
+        }
+        messageDiv.innerText = text;
+        messageDiv.className = type; // 'error' lub 'success'
+        messageDiv.style.display = 'block';
+    }
+
+    // Obsługa wysłania formularza
+    authForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        const totp_code = document.getElementById('totp').value || null;
+
+        const endpoint = isLoginMode ? '/auth/login' : '/auth/register';
+        const payload = isLoginMode ? { email, password, totp_code } : { email, password };
+
+        try {
+            // Wysyłamy zapytanie do naszego API w FastAPI
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                // Jeśli serwer zwrócił błąd (np. za słabe hasło lub blokada konta)
+                let errorMsg = data.detail || "Wystąpił nieznany błąd.";
+                // Obsługa błędów walidacji Pydantic
+                if (Array.isArray(data.detail)) {
+                    errorMsg = data.detail[0].msg;
+                }
+                showMessage(errorMsg, 'error');
+            } else {
+                // Sukces!
+                if (isLoginMode) {
+
+                    localStorage.setItem('access_token', data.access_token);
+
+                    showMessage("Zalogowano pomyślnie! Trwa przekierowanie...", 'success');
+                    // PRZEKIEROWANIE DO BIBLIOTEKI GIER (DODANE)
+                    setTimeout(() => {
+                        window.location.href = "/static/dashboard.html";
+                    }, 1000); // 1 sekunda opóźnienia, żeby uczeń zobaczył zielony komunikat
+                } else {
+                    showMessage("Konto zostało utworzone! Możesz się teraz zalogować.", 'success');
+                }
+            }
+        } catch (error) {
+            showMessage("Błąd połączenia z serwerem.", 'error');
+        }
+    });
+
+    const passwordInput = document.getElementById('password');
+    const meterFill = document.getElementById('meter-fill');
+    const entropyText = document.getElementById('entropy-text');
+
+    // Funkcja obliczająca entropię w locie
+    passwordInput.addEventListener('input', function() {
+        const pass = this.value;
+        if (!pass) {
+            meterFill.style.width = '0%';
+            entropyText.innerText = 'Entropia: 0 bitów';
+            return;
+        }
+
+        let poolSize = 0;
+        if (/[a-z]/.test(pass)) poolSize += 26; // Małe litery
+        if (/[A-Z]/.test(pass)) poolSize += 26; // Wielkie litery
+        if (/[0-9]/.test(pass)) poolSize += 10; // Cyfry
+        if (/[^a-zA-Z0-9]/.test(pass)) poolSize += 32; // Znaki specjalne
+
+        let entropy = 0;
+        if (poolSize > 0) {
+            // Wzór: E = L * log2(R)
+            entropy = pass.length * Math.log2(poolSize);
+        }
+
+        entropy = Math.round(entropy);
+        entropyText.innerText = `Entropia: ${entropy} bitów`;
+
+        // Wizualizacja paska
+        if (entropy < 40) {
+            meterFill.style.width = '30%';
+            meterFill.style.backgroundColor = '#ff4d4d'; // Czerwony (Słabe)
+        } else if (entropy < 60) {
+            meterFill.style.width = '60%';
+            meterFill.style.backgroundColor = '#ffa64d'; // Pomarańczowy (Średnie)
+        } else {
+            meterFill.style.width = '100%';
+            meterFill.style.backgroundColor = '#2eb82e'; // Zielony (Silne)
+        }
+    });
+</script>
+
+</body>
+</html>
