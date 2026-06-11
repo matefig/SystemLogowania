@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 import pyotp
+import urllib.parse
 
 
 from app import models, schemas, security, password_policy
@@ -90,7 +91,6 @@ def login_user(user_data: schemas.UserLogin, db: Session = Depends(get_db)):
                 detail="Wymagany jest kod 2FA (TOTP)."
             )
 
-        # Generowanie obiektu
         totp = pyotp.TOTP(user.totp_secret)
         if not totp.verify(user_data.totp_code):
             raise HTTPException(
@@ -106,5 +106,28 @@ def login_user(user_data: schemas.UserLogin, db: Session = Depends(get_db)):
     # 6. Zwrócenie tokenu sesji
     return {
         "access_token": f"sesja_uzytkownika_{user.id}",
-        "token_type": "bearer"
+        "token_type": "bearer",
+        "email": user.email
+    }
+
+
+@router.post("/setup-2fa", response_model=schemas.TwoFactorSetupResponse)
+def setup_2fa(email: str = Body(embed=True), db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Użytkownik nie istnieje.")
+
+    secret = pyotp.random_base32()
+    user.totp_secret = secret
+    user.is_totp_enabled = True
+    db.commit()
+
+    totp_uri = pyotp.TOTP(secret).provisioning_uri(name=user.email, issuer_name="SecureGames")
+    qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={urllib.parse.quote(totp_uri)}"
+
+    return {
+        "message": "2FA zostało włączone!",
+        "secret": secret,
+        "instrukcja": "Zeskanuj poniższy QR kod w aplikacji",
+        "qr_code_url": qr_url
     }

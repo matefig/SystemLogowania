@@ -9,8 +9,8 @@ Base.metadata.create_all(bind=engine)
 
 
 app = FastAPI(
-    title="Bezpieczny System Logowania API",
-    description="Projekt z cyberbezpieczeństwa (Argon2, Entropia, 2FA, Lockout, Pwned Passwords)",
+    title="Bezpieczny System Logowania",
+    description="Projekt z cyberbezpieczeństwa",
     version="1.0.0"
 )
 

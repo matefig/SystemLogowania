@@ -25,3 +25,10 @@ class UserResponse(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+    email: str
+
+class TwoFactorSetupResponse(BaseModel):
+    message: str
+    secret: str
+    instrukcja: str
+    qr_code_url: str

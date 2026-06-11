@@ -66,7 +66,6 @@ async def check_pwned_passwords(password: str) -> bool:
 async def validate_password_policy(password: str) -> tuple[bool, str]:
     """
     Waliduje hasło na podstawie OWASP ASVS i entropii.
-    Zwraca krotkę: (Czy_poprawne, Komunikat_błędu)
     """
     if len(password) < 12:
         return False, "Hasło musi mieć co najmniej 12 znaków (OWASP)."
